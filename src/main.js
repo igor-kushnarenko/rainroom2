@@ -341,8 +341,53 @@ function renderUI() {
 const muteBtn = document.getElementById('mute');
 function toggleMute() { audio.setMuted(!audio.muted); muteBtn.querySelector('span').textContent = audio.muted ? 'Звук выкл' : 'Звук'; muteBtn.classList.toggle('off', audio.muted); }
 muteBtn.addEventListener('click', toggleMute);
-function toggleFs() { const d = document, el = d.documentElement; if (d.fullscreenElement || d.webkitFullscreenElement) (d.exitFullscreen || d.webkitExitFullscreen).call(d); else (el.requestFullscreen || el.webkitRequestFullscreen)?.call(el); }
-document.getElementById('fs').addEventListener('click', toggleFs);
+const fsButton = document.getElementById('fs');
+const fsHelp = document.getElementById('fshelp');
+const root = document.documentElement;
+const standalone = matchMedia('(display-mode: standalone)');
+const appleMobile = /iPad|iPhone|iPod/.test(navigator.userAgent) ||
+  (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);
+const isFullscreen = () => Boolean(document.fullscreenElement || document.webkitFullscreenElement);
+function canEnterFullscreen() {
+  return Boolean((root.requestFullscreen && document.fullscreenEnabled !== false) ||
+    (root.webkitRequestFullscreen && document.webkitFullscreenEnabled !== false));
+}
+function updateFullscreen() {
+  const active = isFullscreen();
+  const installed = standalone.matches || navigator.standalone;
+  fsButton.hidden = Boolean(!active && installed && !canEnterFullscreen());
+  const label = active ? 'Выйти из полного экрана' :
+    (!canEnterFullscreen() && appleMobile ? 'Как открыть без панелей Safari' : 'На весь экран');
+  document.getElementById('fslabel').textContent = label;
+  fsButton.setAttribute('aria-label', label);
+  fsButton.title = label;
+  fsHelp.hidden = true;
+}
+async function toggleFs() {
+  try {
+    if (isFullscreen()) {
+      await (document.exitFullscreen || document.webkitExitFullscreen).call(document);
+    } else if (canEnterFullscreen()) {
+      await (root.requestFullscreen || root.webkitRequestFullscreen).call(root);
+    } else {
+      showFullscreenHelp();
+    }
+  } catch {
+    showFullscreenHelp();
+  }
+}
+function showFullscreenHelp() {
+  openMenu();
+  fsHelp.textContent = appleMobile ? 'В Safari нажмите «Поделиться» → «На экран Домой». Если появится переключатель «Открывать как веб-приложение», включите его. Запустите Rainroom с новой иконки.' :
+    'Браузер не разрешил переход. Откройте Rainroom в отдельной вкладке и попробуйте снова.';
+  fsHelp.hidden = false;
+}
+fsButton.addEventListener('click', toggleFs);
+document.addEventListener('fullscreenchange', updateFullscreen);
+document.addEventListener('webkitfullscreenchange', updateFullscreen);
+standalone.addEventListener('change', updateFullscreen);
+updateFullscreen();
+const touchLayout = matchMedia('(pointer: coarse)');
 
 let idleTimer = 0;
 function wake() { document.body.classList.remove('idle'); clearTimeout(idleTimer); idleTimer = setTimeout(() => document.body.classList.add('idle'), 6000); }
@@ -353,11 +398,16 @@ for (const ev of ['pointerdown', 'touchend', 'click']) window.addEventListener(e
 const hud = document.getElementById('hud'), menuBtn = document.getElementById('menubtn');
 let menuTimer = 0, overMenu = false;
 function openMenu() { clearTimeout(menuTimer); hud.classList.remove('closed'); menuBtn.setAttribute('aria-expanded', 'true'); }
-function scheduleClose(ms = 5000) { clearTimeout(menuTimer); menuTimer = setTimeout(() => { if (overMenu) return; hud.classList.add('closed'); menuBtn.setAttribute('aria-expanded', 'false'); if (hud.contains(document.activeElement)) document.activeElement.blur(); }, ms); }
+function scheduleClose(ms = 5000) { clearTimeout(menuTimer); if (touchLayout.matches) return; menuTimer = setTimeout(() => { if (overMenu) return; hud.classList.add('closed'); menuBtn.setAttribute('aria-expanded', 'false'); if (hud.contains(document.activeElement)) document.activeElement.blur(); }, ms); }
 for (const el of [hud, menuBtn]) {
   el.addEventListener('pointerenter', (e) => { if (e.pointerType === 'mouse') { overMenu = true; openMenu(); } });
   el.addEventListener('pointerleave', (e) => { if (e.pointerType === 'mouse') { overMenu = false; scheduleClose(); } });
 }
+document.getElementById('closemenu').addEventListener('click', () => {
+  hud.classList.add('closed');
+  menuBtn.setAttribute('aria-expanded', 'false');
+  menuBtn.focus();
+});
 menuBtn.addEventListener('click', () => { openMenu(); if (!overMenu) scheduleClose(); });
 hud.addEventListener('pointerdown', () => { if (!overMenu) scheduleClose(); });
 const focusables = () => [...document.querySelectorAll('#hud button, #hud input')].filter((el) => el.offsetParent !== null && !el.closest('.collapsed') && !el.closest('.closed'));
@@ -379,7 +429,33 @@ window.addEventListener('keydown', (e) => {
 function toWorld(e) { const r = canvas.getBoundingClientRect(); return [CROP_X + (e.clientX - r.left) / r.width * (W - 2 * CROP_X), CROP_Y + (e.clientY - r.top) / r.height * (H - 2 * CROP_Y)]; }
 let hoverId = null;
 window.addEventListener('pointermove', (e) => { wake(); if (e.target !== canvas) { hoverId = null; return; } hoverId = hitDevice(...toWorld(e)); canvas.style.cursor = hoverId ? 'pointer' : ''; });
-canvas.addEventListener('click', (e) => { const id = hitDevice(...toWorld(e)); if (id) setDevice(id, !settings.devices[id]); });
+let panFraction = 0.5;
+let panRange = 0;
+let gesture = null;
+let suppressClick = false;
+canvas.addEventListener('pointerdown', (e) => {
+  if (!e.isPrimary) return;
+  suppressClick = false;
+  if (!panRange || e.pointerType === 'mouse') return;
+  gesture = { id: e.pointerId, x: e.clientX, y: e.clientY, start: panFraction };
+  canvas.setPointerCapture(e.pointerId);
+});
+canvas.addEventListener('pointermove', (e) => {
+  if (gesture?.id !== e.pointerId) return;
+  const dx = e.clientX - gesture.x;
+  if (Math.hypot(dx, e.clientY - gesture.y) > 8) suppressClick = true;
+  if (!suppressClick) return;
+  panFraction = Math.min(1, Math.max(0, gesture.start - dx / panRange));
+  canvas.style.left = -Math.round(panFraction * panRange) + 'px';
+});
+for (const event of ['pointerup', 'pointercancel', 'lostpointercapture']) {
+  canvas.addEventListener(event, (e) => {
+    if (gesture?.id !== e.pointerId) return;
+    if (event !== 'pointerup') suppressClick = true;
+    gesture = null;
+  });
+}
+canvas.addEventListener('click', (e) => { if (suppressClick) return; const id = hitDevice(...toWorld(e)); if (id) setDevice(id, !settings.devices[id]); });
 canvas.addEventListener('wheel', (e) => {
   const [x, y] = toWorld(e), id = hitDevice(x, y), s = Math.sign(e.deltaY); e.preventDefault();
   if (id === 'radio' && settings.devices.radio) tuner.turn(s);
@@ -387,7 +463,14 @@ canvas.addEventListener('wheel', (e) => {
 }, { passive: false });
 
 function resize() {
-  const vw = innerWidth, vh = innerHeight; const { w, h, left, top } = fitRect(vw, vh, settings.fill ? 'cover' : 'contain');
+  const vw = innerWidth, vh = innerHeight;
+  const portrait = touchLayout.matches && vh > vw;
+  const frame = fitRect(vw, vh, portrait || settings.fill ? 'cover' : 'contain');
+  const { w, h, top } = frame;
+  panRange = portrait ? Math.max(0, w - vw) : 0;
+  if (gesture) suppressClick = true;
+  gesture = null;
+  const left = portrait ? -Math.round(panFraction * panRange) : frame.left;
   const dpr = devicePixelRatio || 1; let bw = Math.round(w * dpr), bh = Math.round(h * dpr); const cap = Math.min(1, 1920 / bw, 1080 / bh);
   bw = Math.round(bw * cap); bh = Math.round(bh * cap); renderer.setSize(bw, bh, false);
   if (LOW) { RW = 480; RH = 270; } else { RW = W - 2 * CROP_X; RH = H - 2 * CROP_Y; } rt.setSize(RW, RH);

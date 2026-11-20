@@ -1,0 +1,10 @@
+{
+  "name": "Rainroom — Дождь за окном",
+  "short_name": "Rainroom",
+  "lang": "ru",
+  "start_url": "./",
+  "scope": "./",
+  "display": "standalone",
+  "background_color": "#05080d",
+  "theme_color": "#05080d"
+}

@@ -64,3 +64,48 @@ button.on{background:rgba(60,200,255,.18);border-color:rgba(120,220,255,.4)}
 /* поля при вписывании: размытое и затемнённое продолжение кадра */
 body{background:#05080d}
 #bg{position:absolute;inset:-60px;background:#05080d url(../layers/half/01_base.png) center/cover no-repeat;filter:blur(28px) brightness(.32) saturate(1.1)}
+
+#fs[hidden], #closemenu, .touch-help { display: none; }
+#fshelp { margin: 4px; line-height: 1.45; }
+@media (pointer: coarse) {
+  #c { touch-action: none; }
+  .desktop-help { display: none; }
+  .touch-help { display: inline; }
+  #overlay { padding: 24px; }
+  #hud, #menubtn {
+    right: max(10px, env(safe-area-inset-right));
+    bottom: max(10px, env(safe-area-inset-bottom));
+  }
+  #menubtn { width: 46px; height: 46px; }
+  body.idle #menubtn { opacity: .7; pointer-events: auto; }
+  #hud {
+    box-sizing: border-box;
+    width: min(420px, 94vw);
+    max-width: none;
+    max-height: calc(100% - max(10px, env(safe-area-inset-top)) - max(10px, env(safe-area-inset-bottom)));
+    overflow-y: auto;
+    overscroll-behavior: contain;
+    padding: 10px;
+    gap: 6px;
+    font-size: 14px;
+    background-color: rgba(10, 19, 29, .94);
+  }
+  #hud > * { flex-shrink: 0; }
+  #hud.closed { visibility: hidden; }
+  body.idle #hud:not(.closed) { opacity: 1; pointer-events: auto; transform: none; }
+  #closemenu { display: flex; align-self: end; }
+  #hud button { min-height: 44px; }
+  #hud .st { min-width: 44px; justify-content: center; }
+  #hud .rainlvl:not(.collapsed) { max-height: none; }
+  #hud .rainlvl input { min-width: 40px; }
+  #hud .station { flex: 1; min-width: 0; }
+  #hud .radiovol input { width: 23%; flex: 0 1 auto; }
+  #hud .vol input { height: 28px; }
+}
+@media (pointer: coarse) and (orientation: portrait) {
+  #hud { left: max(8px, env(safe-area-inset-left)); right: max(8px, env(safe-area-inset-right)); width: auto; }
+  #fillbtn { display: none; }
+}
+@media (orientation: landscape) {
+  .pan-help { display: none; }
+}
